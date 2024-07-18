@@ -7,3 +7,12 @@
 
 **Project Notables:**
 - Any release from NotForkBot (Release 7/12/24 and up) and PokeViewer.NET (v3.1 and up) will require [hybrid usb-botbase v2.3.5.3](https://github.com/zyro670/usb-botbase/releases/tag/2.3.5.3) in order to make use of the latest features.
+
+
+
+
+**Donation Links:**
+- [Ko-fi](https://ko-fi.com/zyro670)
+- [Paypal](https://www.paypal.com/donate/?hosted_button_id=XE88GJ3EJ29HE)
+- [Paypal.me](https://www.paypal.com/donate/?hosted_button_id=XE88GJ3EJ29HE)
+- [Streamlabs](https://streamlabs.com/zyro670/tip)
