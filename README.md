@@ -10,7 +10,7 @@
 
 
 
-
+Collab/Project idea? [Let me know here!](https://github.com/zyro670/zyro670.github.io/issues/new/choose) 
 
 
 
