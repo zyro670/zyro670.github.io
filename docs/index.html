@@ -1,156 +1,254 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Anime Tracker Web</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anime Tracker Web Viewer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .anime-card {
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            height: 100%;
         }
         .anime-card:hover {
-            transform: scale(1.02);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
         }
         .progress {
-            height: 20px;
+            height: 1.5rem;
+        }
+        .refresh-btn {
+            cursor: pointer;
+            transition: transform 0.5s ease;
+        }
+        .refresh-btn:hover {
+            transform: rotate(180deg);
         }
     </style>
 </head>
 <body class="bg-light">
     <div class="container py-4">
-        <h1 class="text-center mb-4">My Anime Tracker</h1>
-        
-        <div class="row mb-3">
-            <div class="col-md-6">
-                <input type="text" id="search" class="form-control" placeholder="Search anime...">
+        <div class="text-center mb-4">
+            <h1>My Anime Tracker</h1>
+            <p class="text-muted">Synced from WinForms application</p>
+            <a href="https://github.com/YOUR_USERNAME/YOUR_REPO" class="btn btn-sm btn-outline-secondary mb-3">
+                View Source Code
+            </a>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-8">
+                <input type="text" id="search" class="form-control form-control-lg" placeholder="Search anime...">
             </div>
-            <div class="col-md-4">
-                <select id="sort" class="form-select">
-                    <option value="progress">Sort by Progress</option>
-                    <option value="title">Sort by Title</option>
+            <div class="col-md-3">
+                <select id="sort" class="form-select form-select-lg">
+                    <option value="progress">By Progress</option>
+                    <option value="title">By Title</option>
+                    <option value="rating">By Rating</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <button id="refresh" class="btn btn-primary w-100">Refresh</button>
+            <div class="col-md-1 d-flex align-items-center">
+                <span id="refresh" class="refresh-btn fs-4" title="Refresh data">⟳</span>
             </div>
         </div>
+
+        <div id="status-alert" class="alert alert-info d-none"></div>
         
-        <div id="loading" class="text-center my-4">
-            <div class="spinner-border" role="status">
+        <div id="loading" class="text-center my-5 py-5">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
+            <p class="mt-3">Loading your anime data...</p>
         </div>
-        
-        <div id="anime-list" class="row"></div>
+
+        <div id="anime-list" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4"></div>
     </div>
 
     <script>
+        // Configuration - Update these values
         const CONFIG = {
-            gistId: 'YOUR_GIST_ID',
-            fileName: 'anime_tracker.json',
-            githubUser: 'YOUR_USERNAME'
+            gistId: 'YOUR_GIST_ID',          // Replace with your Gist ID
+            fileName: 'anime_tracker.json',   // Must match your WinForms app
+            githubUser: 'YOUR_USERNAME',       // Your GitHub username
+            repoName: 'YOUR_REPO'             // Your repository name
         };
 
-        let allAnime = [];
-        
+        // State management
+        let animeData = [];
+        let lastUpdated = null;
+
+        // DOM elements
+        const elements = {
+            animeList: document.getElementById('anime-list'),
+            loading: document.getElementById('loading'),
+            search: document.getElementById('search'),
+            sort: document.getElementById('sort'),
+            refresh: document.getElementById('refresh'),
+            statusAlert: document.getElementById('status-alert')
+        };
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            setupEventListeners();
+        });
+
+        // Fetch data from Gist
         async function loadData() {
             try {
                 showLoading(true);
+                clearStatus();
                 
-                // Try direct Gist URL first
-                let response = await fetch(`https://gist.githubusercontent.com/${CONFIG.githubUser}/${CONFIG.gistId}/raw/${CONFIG.fileName}`);
+                // Try both direct and API endpoints
+                const urls = [
+                    `https://gist.githubusercontent.com/${CONFIG.githubUser}/${CONFIG.gistId}/raw/${CONFIG.fileName}`,
+                    `https://api.github.com/gists/${CONFIG.gistId}`
+                ];
                 
-                if (!response.ok) {
-                    // Fallback to API
-                    response = await fetch(`https://api.github.com/gists/${CONFIG.gistId}`);
-                    const data = await response.json();
-                    renderAnime(JSON.parse(data.files[CONFIG.fileName].content));
-                } else {
-                    renderAnime(await response.json());
+                let response;
+                for (const url of urls) {
+                    try {
+                        response = await fetch(url);
+                        if (response.ok) break;
+                    } catch (e) {
+                        console.warn(`Failed to fetch from ${url}`, e);
+                    }
                 }
+                
+                if (!response || !response.ok) {
+                    throw new Error('Failed to fetch data from all endpoints');
+                }
+                
+                const data = await response.json();
+                const content = data.files ? data.files[CONFIG.fileName].content : data;
+                
+                animeData = Object.values(JSON.parse(content))
+                    .filter(anime => anime.IsTracking);
+                
+                lastUpdated = new Date();
+                renderAnimeList();
+                showStatus('success', `Data loaded successfully (${formatDate(lastUpdated)})`);
             } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to load data. Check console for details.");
+                console.error('Error loading data:', error);
+                showStatus('danger', `Failed to load data: ${error.message}`);
+                elements.animeList.innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger">
+                            Could not load anime data. Please try again later.
+                            ${error.message ? `<br><small>${error.message}</small>` : ''}
+                        </div>
+                    </div>
+                `;
             } finally {
                 showLoading(false);
             }
         }
-        
-        function renderAnime(animeData) {
-            allAnime = Object.values(animeData)
-                .filter(a => a.IsTracking)
-                .sort((a, b) => b.LastWatchedEpisode - a.LastWatchedEpisode);
-                
-            updateDisplay();
-        }
-        
-        function updateDisplay() {
-            const container = document.getElementById('anime-list');
-            container.innerHTML = '';
+
+        // Render the anime list
+        function renderAnimeList() {
+            const searchTerm = elements.search.value.toLowerCase();
+            const sortBy = elements.sort.value;
             
-            const searchTerm = document.getElementById('search').value.toLowerCase();
-            const sortBy = document.getElementById('sort').value;
+            // Filter and sort
+            let filtered = animeData.filter(anime => 
+                anime.Title.toLowerCase().includes(searchTerm) ||
+                (anime.EnglishTitle && anime.EnglishTitle.toLowerCase().includes(searchTerm)));
             
-            let filtered = [...allAnime];
-            
-            // Apply search filter
-            if (searchTerm) {
-                filtered = filtered.filter(anime => 
-                    anime.Title.toLowerCase().includes(searchTerm) ||
-                    (anime.EnglishTitle && anime.EnglishTitle.toLowerCase().includes(searchTerm)));
-            }
-            
-            // Apply sorting
-            if (sortBy === 'title') {
-                filtered.sort((a, b) => a.Title.localeCompare(b.Title));
-            } else {
-                filtered.sort((a, b) => 
-                    (b.LastWatchedEpisode / (b.TotalEpisodes || 1)) - 
-                    (a.LastWatchedEpisode / (a.TotalEpisodes || 1)));
-            }
+            filtered.sort((a, b) => {
+                switch (sortBy) {
+                    case 'title':
+                        return a.Title.localeCompare(b.Title);
+                    case 'rating':
+                        return (b.UserRating || 0) - (a.UserRating || 0);
+                    case 'progress':
+                    default:
+                        const progressA = a.LastWatchedEpisode / (a.TotalEpisodes || 1);
+                        const progressB = b.LastWatchedEpisode / (b.TotalEpisodes || 1);
+                        return progressB - progressA;
+                }
+            });
             
             // Render cards
-            filtered.forEach(anime => {
-                const progress = (anime.LastWatchedEpisode / (anime.TotalEpisodes || 1)) * 100;
-                const card = document.createElement('div');
-                card.className = 'col-md-4 mb-4';
-                card.innerHTML = `
+            elements.animeList.innerHTML = filtered.map(anime => `
+                <div class="col">
                     <div class="anime-card card h-100">
-                        <img src="${anime.CoverImageUrl}" class="card-img-top" alt="${anime.Title}">
-                        <div class="card-body">
+                        <img src="${anime.CoverImageUrl || 'https://via.placeholder.com/300x200?text=No+Cover'}" 
+                             class="card-img-top" 
+                             alt="${anime.Title}"
+                             style="height: 200px; object-fit: cover;">
+                        <div class="card-body d-flex flex-column">
                             <h5 class="card-title">${anime.Title}</h5>
-                            <p class="card-text">
-                                <small class="text-muted">${anime.Status}</small>
-                            </p>
-                            <div class="progress mb-3">
+                            ${anime.EnglishTitle && anime.EnglishTitle !== anime.Title ? 
+                              `<p class="card-subtitle mb-2 text-muted">${anime.EnglishTitle}</p>` : ''}
+                            
+                            <div class="progress mt-auto mb-3">
                                 <div class="progress-bar" 
                                      role="progressbar" 
-                                     style="width: ${progress}%" 
+                                     style="width: ${calculateProgress(anime)}%" 
                                      aria-valuenow="${anime.LastWatchedEpisode}" 
                                      aria-valuemax="${anime.TotalEpisodes || '?'}">
+                                    ${anime.LastWatchedEpisode}/${anime.TotalEpisodes || '?'}
                                 </div>
                             </div>
-                            <p>Episodes: ${anime.LastWatchedEpisode}/${anime.TotalEpisodes || '?'}</p>
-                            <a href="${anime.AnimeUrl}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                View on AniList
-                            </a>
+                            
+                            ${anime.UserRating ? `
+                                <div class="d-flex align-items-center mb-2">
+                                    <small class="text-muted me-2">Your Rating:</small>
+                                    <div class="rating-stars">
+                                        ${renderStars(anime.UserRating)}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="d-flex justify-content-between">
+                                <a href="${anime.AnimeUrl}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    View on AniList
+                                </a>
+                                <small class="text-muted align-self-center">
+                                    ${anime.Status}
+                                </small>
+                            </div>
                         </div>
                     </div>
-                `;
-                container.appendChild(card);
-            });
+                </div>
+            `).join('');
         }
-        
+
+        // Helper functions
+        function calculateProgress(anime) {
+            if (!anime.TotalEpisodes) return 0;
+            return Math.min(100, (anime.LastWatchedEpisode / anime.TotalEpisodes) * 100);
+        }
+
+        function renderStars(rating) {
+            if (!rating) return '';
+            const stars = Math.round(rating / 20); // Convert 0-100 to 0-5 stars
+            return '★'.repeat(stars) + '☆'.repeat(5 - stars);
+        }
+
+        function formatDate(date) {
+            return date.toLocaleString();
+        }
+
         function showLoading(show) {
-            document.getElementById('loading').style.display = show ? 'block' : 'none';
+            elements.loading.style.display = show ? 'block' : 'none';
+            elements.animeList.style.display = show ? 'none' : 'grid';
         }
-        
-        // Event listeners
-        document.getElementById('search').addEventListener('input', updateDisplay);
-        document.getElementById('sort').addEventListener('change', updateDisplay);
-        document.getElementById('refresh').addEventListener('click', loadData);
-        
-        // Initial load
-        loadData();
+
+        function showStatus(type, message) {
+            elements.statusAlert.className = `alert alert-${type} d-block`;
+            elements.statusAlert.textContent = message;
+        }
+
+        function clearStatus() {
+            elements.statusAlert.className = 'alert alert-info d-none';
+        }
+
+        function setupEventListeners() {
+            elements.search.addEventListener('input', renderAnimeList);
+            elements.sort.addEventListener('change', renderAnimeList);
+            elements.refresh.addEventListener('click', loadData);
+        }
     </script>
 </body>
 </html>
