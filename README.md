@@ -7,7 +7,6 @@
 
 **Project Notables:**
 - #comingsoon
-- [test](https://raw.githubusercontent.com/zyro670/zyro670.github.io/refs/heads/main/docs/index.html)
 
 
 
